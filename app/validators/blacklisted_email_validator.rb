@@ -2,13 +2,13 @@
 
 class BlacklistedEmailValidator < ActiveModel::Validator
   def validate(user)
-    user.errors.add(:email, I18n.t('users.invalid_email')) if blocked_email?(user.email)
+    user.errors.add(:email, '@utwente.nl or @*.utwente.nl email required') if blocked_email?(user.email)
   end
 
   private
 
   def blocked_email?(value)
-    on_blacklist?(value) || not_on_whitelist?(value)
+    on_blacklist?(value) || not_on_whitelist?(value) || not_utwente_email?(value)
   end
 
   def on_blacklist?(value)
@@ -27,6 +27,11 @@ class BlacklistedEmailValidator < ActiveModel::Validator
     domains = Rails.configuration.x.email_domains_whitelist.gsub('.', '\.')
     regexp  = Regexp.new("@(.+\\.)?(#{domains})$", true)
 
+    value !~ regexp
+  end
+
+  def not_utwente_email?(value)
+    regexp = Regexp.new("@(.+\\.)?(utwente.nl)$", true)
     value !~ regexp
   end
 end
