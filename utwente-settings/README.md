@@ -189,16 +189,21 @@ Maintenance: pull the site off-line and set a 503 maintenance page
     ln -s -f /etc/nginx/sites-available/maintenance.conf /etc/nginx/sites-enabled/mastodon.utwente.nl.conf
     /etc/init.d/nginx restart
 
+
 To update to a newer Mastodon version:
 
-    # in the utwente repository (github.com/djoerd/mastodon)
     su mastodon
+i    # make a backup, now
+    rsync -av /data/mastodon/public/system /home/hiemstra/backups/mastodon/live/public/
+    pg_dump mastodon_production >"/home/hiemstra/backups/mastodon/dump-$(date +\%a).sql"
+
+    # in the utwente repository (github.com/djoerd/mastodon)
     cd ~/mastodon
     git remote add tootsuite https://github.com/tootsuite/mastodon.git
     git checkout master
     git pull tootsuite master --tags
-    git commit -m 'merge'
     git push --tags
+    # in case you mess up the repo:
     git push -f origin LASTCOMMITNUMBER:master
 
     # in the live repository: [update as follows](https://github.com/tootsuite/documentation/blob/master/Running-Mastodon/Updating-Mastodon-Guide.md)
@@ -206,6 +211,9 @@ To update to a newer Mastodon version:
     cd ~/live
     git fetch --tags
     git checkout $(git tag -l | grep -v 'rc[0-9]*$' | sort -V | tail -n 1)
+    rbenv install 2.5.1
+    rbenv global 2.5.1
+    gem install bundler # new Ruby? Install bundler again!
     bundle install
     yarn install
     RAILS_ENV=production bundle exec rails db:migrate
