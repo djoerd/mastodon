@@ -183,21 +183,16 @@ You don't have backups, unless you tested them: How to restore the PostgreSQL du
         GRANT ALL ON SCHEMA public TO postgres;
         GRANT ALL ON SCHEMA public TO PUBLIC;
 
-Maintenance: pull the site off-line and set a 503 maintenance page
-
-    sudo bash
-    ln -s -f /etc/nginx/sites-available/maintenance.conf /etc/nginx/sites-enabled/mastodon.utwente.nl.conf
-    /etc/init.d/nginx restart
-
-
 To update to a newer Mastodon version:
 
-    su mastodon
-i    # make a backup, now
-    rsync -av /data/mastodon/public/system /home/hiemstra/backups/mastodon/live/public/
-    pg_dump mastodon_production >"/home/hiemstra/backups/mastodon/dump-$(date +\%a).sql"
+    # Update Ubuntu 16.04
+    sudo apt-get dist-upgrade
+    sudo apt-get update
+    sudo apt-get upgrade
+    sudo apt-get autoremove
 
-    # in the utwente repository (github.com/djoerd/mastodon)
+    # update the utwente repository (github.com/djoerd/mastodon)
+    su mastodon
     cd ~/mastodon
     git remote add tootsuite https://github.com/tootsuite/mastodon.git
     git checkout master
@@ -206,8 +201,17 @@ i    # make a backup, now
     # in case you mess up the repo:
     git push -f origin LASTCOMMITNUMBER:master
 
+    # make a backup, now
+    rsync -av /data/mastodon/public/system /home/hiemstra/backups/mastodon/live/public/
+    pg_dump mastodon_production >"/home/hiemstra/backups/mastodon/dump-$(date +\%a).sql"
+
+    #pull the site off-line and set a 503 maintenance page
+    sudo ln -s -f /etc/nginx/sites-available/maintenance.conf /etc/nginx/sites-enabled/mastodon.utwente.nl.conf
+    sudo /etc/init.d/nginx restart
+
     # in the live repository: [update as follows](https://github.com/tootsuite/documentation/blob/master/Running-Mastodon/Updating-Mastodon-Guide.md)
     # check the [release notes](https://github.com/tootsuite/mastodon/releases/)
+    su mastodon
     cd ~/live
     git fetch --tags
     git checkout $(git tag -l | grep -v 'rc[0-9]*$' | sort -V | tail -n 1)
@@ -219,7 +223,10 @@ i    # make a backup, now
     RAILS_ENV=production bundle exec rails db:migrate
     RAILS_ENV=production bundle exec rails assets:precompile
 
-        
+    # Remove 503 page
+    sudo ln -s -f /etc/nginx/sites-available/mastodon.utwente.nl.conf /etc/nginx/sites-enabled/mastodon.utwente.nl.conf
+    sudo reboot
+ 
 Encore, How to run a Mastodon bot (using: https://anarcat.gitlab.io/feed2exec/)
 
     python3 -m feed2exec add news https://www.utwente.nl/en/news.rss --output feed2exec.plugins.exec --args "/home/hiemstra/bin/toot_news news@mastodon.utwente.nl '{item.title} {item.link}'"
