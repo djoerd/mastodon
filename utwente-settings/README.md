@@ -31,6 +31,10 @@ Firewall settings
     ufw enable
     ufw status
 
+Set a login message that scares people away
+
+    sudo vi /etc/motd
+
 The remainder is based on the [Mastodon guide](https://github.com/tootsuite/documentation/blob/master/Running-Mastodon/Production-guide.md)
 
     curl -sL https://deb.nodesource.com/setup_6.x | bash -
