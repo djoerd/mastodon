@@ -187,6 +187,13 @@ You don't have backups, unless you tested them: How to restore the PostgreSQL du
         GRANT ALL ON SCHEMA public TO postgres;
         GRANT ALL ON SCHEMA public TO PUBLIC;
 
+Adding support for Latex:
+
+    # Use this [patch](https://gist.github.com/christianp/222cebfa0a3c9d0062f793e98ef4e6ad)
+    wget https://github.com/mathjax/MathJax/archive/master.zip
+    unzip master.zip
+    mv MathJax ~/live/public/.
+
 To update to a newer Mastodon version:
 
     # Update Ubuntu 16.04
