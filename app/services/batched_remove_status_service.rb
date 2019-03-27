@@ -2,6 +2,7 @@
 
 class BatchedRemoveStatusService < BaseService
   include StreamEntryRenderer
+  include Redisable
 
   # Delete given statuses and reblogs of them
   # Dispatch PuSH updates of the deleted statuses, but only local ones
@@ -9,23 +10,32 @@ class BatchedRemoveStatusService < BaseService
   # Remove statuses from home feeds
   # Push delete events to streaming API for home feeds and public feeds
   # @param [Status] statuses A preferably batched array of statuses
-  def call(statuses)
+  # @param [Hash] options
+  # @option [Boolean] :skip_side_effects
+  def call(statuses, **options)
     statuses = Status.where(id: statuses.map(&:id)).includes(:account, :stream_entry).flat_map { |status| [status] + status.reblogs.includes(:account, :stream_entry).to_a }
 
-    @mentions = statuses.map { |s| [s.id, s.mentions.includes(:account).to_a] }.to_h
-    @tags     = statuses.map { |s| [s.id, s.tags.pluck(:name)] }.to_h
+    @mentions = statuses.each_with_object({}) { |s, h| h[s.id] = s.active_mentions.includes(:account).to_a }
+    @tags     = statuses.each_with_object({}) { |s, h| h[s.id] = s.tags.pluck(:name) }
 
     @stream_entry_batches  = []
     @salmon_batches        = []
-    @json_payloads         = statuses.map { |s| [s.id, Oj.dump(event: :delete, payload: s.id.to_s)] }.to_h
+    @json_payloads         = statuses.each_with_object({}) { |s, h| h[s.id] = Oj.dump(event: :delete, payload: s.id.to_s) }
     @activity_xml          = {}
 
     # Ensure that rendered XML reflects destroyed state
-    statuses.each(&:destroy)
+    statuses.each do |status|
+      status.mark_for_mass_destruction!
+      status.destroy
+    end
+
+    return if options[:skip_side_effects]
 
     # Batch by source account
     statuses.group_by(&:account_id).each_value do |account_statuses|
       account = account_statuses.first.account
+
+      next unless account
 
       unpush_from_home_timelines(account, account_statuses)
       unpush_from_list_timelines(account, account_statuses)
@@ -36,7 +46,6 @@ class BatchedRemoveStatusService < BaseService
     # Cannot be batched
     statuses.each do |status|
       unpush_from_public_timelines(status)
-      unpush_from_direct_timelines(status) if status.direct_visibility?
       batch_salmon_slaps(status) if status.local?
     end
 
@@ -53,7 +62,7 @@ class BatchedRemoveStatusService < BaseService
   end
 
   def unpush_from_home_timelines(account, statuses)
-    recipients = account.followers.local.to_a
+    recipients = account.followers_for_local_distribution.to_a
 
     recipients << account if account.local?
 
@@ -65,7 +74,7 @@ class BatchedRemoveStatusService < BaseService
   end
 
   def unpush_from_list_timelines(account, statuses)
-    account.lists.select(:id, :account_id).each do |list|
+    account.lists_for_local_distribution.select(:id, :account_id).each do |list|
       statuses.each do |status|
         FeedManager.instance.unpush_from_list(list, status)
       end
@@ -93,16 +102,6 @@ class BatchedRemoveStatusService < BaseService
     end
   end
 
-  def unpush_from_direct_timelines(status)
-    payload = @json_payloads[status.id]
-    redis.pipelined do
-      @mentions[status.id].each do |mention|
-        redis.publish("timeline:direct:#{mention.account.id}", payload) if mention.account.local?
-      end
-      redis.publish("timeline:direct:#{status.account.id}", payload) if status.account.local?
-    end
-  end
-
   def batch_salmon_slaps(status)
     return if @mentions[status.id].empty?
 
@@ -111,10 +110,6 @@ class BatchedRemoveStatusService < BaseService
     recipients.each do |recipient_id|
       @salmon_batches << [build_xml(status.stream_entry), status.account_id, recipient_id]
     end
-  end
-
-  def redis
-    Redis.current
   end
 
   def build_xml(stream_entry)

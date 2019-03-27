@@ -8,13 +8,14 @@ import Avatar from '../../../components/avatar';
 import RelativeTimestamp from '../../../components/relative_timestamp';
 import DisplayName from '../../../components/display_name';
 import ImmutablePureComponent from 'react-immutable-pure-component';
+import Icon from 'mastodon/components/icon';
 
 const messages = defineMessages({
   reblog: { id: 'status.reblog', defaultMessage: 'Boost' },
 });
 
-@injectIntl
-export default class BoostModal extends ImmutablePureComponent {
+export default @injectIntl
+class BoostModal extends ImmutablePureComponent {
 
   static contextTypes = {
     router: PropTypes.object,
@@ -37,7 +38,7 @@ export default class BoostModal extends ImmutablePureComponent {
   }
 
   handleAccountClick = (e) => {
-    if (e.button === 0) {
+    if (e.button === 0 && !(e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       this.props.onClose();
       this.context.router.history.push(`/accounts/${this.props.status.getIn(['account', 'id'])}`);
@@ -74,7 +75,7 @@ export default class BoostModal extends ImmutablePureComponent {
         </div>
 
         <div className='boost-modal__action-bar'>
-          <div><FormattedMessage id='boost_modal.combo' defaultMessage='You can press {combo} to skip this next time' values={{ combo: <span>Shift + <i className='fa fa-retweet' /></span> }} /></div>
+          <div><FormattedMessage id='boost_modal.combo' defaultMessage='You can press {combo} to skip this next time' values={{ combo: <span>Shift + <Icon id='retweet' /></span> }} /></div>
           <Button text={intl.formatMessage(messages.reblog)} onClick={this.handleReblog} ref={this.setRef} />
         </div>
       </div>

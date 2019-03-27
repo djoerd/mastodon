@@ -1,25 +1,34 @@
 // Note: You must restart bin/webpack-dev-server for changes to take effect
 
-const webpack = require('webpack');
 const merge = require('webpack-merge');
+const UglifyJsPlugin = require('uglifyjs-webpack-plugin');
 const CompressionPlugin = require('compression-webpack-plugin');
+const zopfli = require('@gfx/zopfli');
 const sharedConfig = require('./shared.js');
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const OfflinePlugin = require('offline-plugin');
-const { env, publicPath } = require('./configuration.js');
+const { publicPath } = require('./configuration.js');
 const path = require('path');
+const { URL } = require('url');
 
-let compressionAlgorithm;
-try {
-  const zopfli = require('node-zopfli');
-  compressionAlgorithm = (content, options, fn) => {
-    zopfli.gzip(content, options, fn);
-  };
-} catch (error) {
-  compressionAlgorithm = 'gzip';
+let attachmentHost;
+
+if (process.env.S3_ENABLED === 'true') {
+  if (process.env.S3_ALIAS_HOST || process.env.S3_CLOUDFRONT_HOST) {
+    attachmentHost = process.env.S3_ALIAS_HOST || process.env.S3_CLOUDFRONT_HOST;
+  } else {
+    attachmentHost = process.env.S3_HOSTNAME || `s3-${process.env.S3_REGION || 'us-east-1'}.amazonaws.com`;
+  }
+} else if (process.env.SWIFT_ENABLED === 'true') {
+  const { host } = new URL(process.env.SWIFT_OBJECT_URL);
+  attachmentHost = host;
+} else {
+  attachmentHost = null;
 }
 
 module.exports = merge(sharedConfig, {
+  mode: 'production',
+
   output: {
     filename: '[name]-[chunkhash].js',
     chunkFilename: '[name]-[chunkhash].js',
@@ -28,22 +37,32 @@ module.exports = merge(sharedConfig, {
   devtool: 'source-map', // separate sourcemap file, suitable for production
   stats: 'normal',
 
+  optimization: {
+    minimize: true,
+    minimizer: [
+      new UglifyJsPlugin({
+        cache: true,
+        parallel: true,
+        sourceMap: true,
+
+        uglifyOptions: {
+          compress: {
+            warnings: false,
+          },
+
+          output: {
+            comments: false,
+          },
+        },
+      }),
+    ],
+  },
+
   plugins: [
-    new webpack.optimize.UglifyJsPlugin({
-      sourceMap: true,
-      mangle: true,
-
-      compress: {
-        warnings: false,
-      },
-
-      output: {
-        comments: false,
-      },
-    }),
     new CompressionPlugin({
-      asset: '[path].gz[query]',
-      algorithm: compressionAlgorithm,
+      algorithm(input, compressionOptions, callback) {
+        return zopfli.gzip(input, compressionOptions, callback);
+      },
       test: /\.(js|css|html|json|ico|svg|eot|otf|ttf)$/,
     }),
     new BundleAnalyzerPlugin({ // generates report.html and stats.json
@@ -76,7 +95,7 @@ module.exports = merge(sharedConfig, {
       },
       externals: [
         '/emoji/1f602.svg', // used for emoji picker dropdown
-        '/emoji/sheet.png', // used in emoji-mart
+        '/emoji/sheet_10.png', // used in emoji-mart
       ],
       excludes: [
         '**/*.gz',
@@ -90,7 +109,7 @@ module.exports = merge(sharedConfig, {
         '**/*.woff',
       ],
       ServiceWorker: {
-        entry: `imports-loader?process.env=>${encodeURIComponent(JSON.stringify(env))}!${encodeURI(path.join(__dirname, '../../app/javascript/mastodon/service_worker/entry.js'))}`,
+        entry: `imports-loader?ATTACHMENT_HOST=>${encodeURIComponent(JSON.stringify(attachmentHost))}!${encodeURI(path.join(__dirname, '../../app/javascript/mastodon/service_worker/entry.js'))}`,
         cacheName: 'mastodon',
         output: '../assets/sw.js',
         publicPath: '/sw.js',

@@ -9,6 +9,7 @@ import { defineMessages, injectIntl } from 'react-intl';
 import IconButton from '../../../components/icon_button';
 import ImmutablePureComponent from 'react-immutable-pure-component';
 import ImageLoader from './image_loader';
+import Icon from 'mastodon/components/icon';
 
 const messages = defineMessages({
   close: { id: 'lightbox.close', defaultMessage: 'Close' },
@@ -16,14 +17,20 @@ const messages = defineMessages({
   next: { id: 'lightbox.next', defaultMessage: 'Next' },
 });
 
-@injectIntl
-export default class MediaModal extends ImmutablePureComponent {
+export const previewState = 'previewMediaModal';
+
+export default @injectIntl
+class MediaModal extends ImmutablePureComponent {
 
   static propTypes = {
     media: ImmutablePropTypes.list.isRequired,
     index: PropTypes.number.isRequired,
     onClose: PropTypes.func.isRequired,
     intl: PropTypes.object.isRequired,
+  };
+
+  static contextTypes = {
+    router: PropTypes.object,
   };
 
   state = {
@@ -48,23 +55,41 @@ export default class MediaModal extends ImmutablePureComponent {
     this.setState({ index: index % this.props.media.size });
   }
 
-  handleKeyUp = (e) => {
+  handleKeyDown = (e) => {
     switch(e.key) {
     case 'ArrowLeft':
       this.handlePrevClick();
+      e.preventDefault();
+      e.stopPropagation();
       break;
     case 'ArrowRight':
       this.handleNextClick();
+      e.preventDefault();
+      e.stopPropagation();
       break;
     }
   }
 
   componentDidMount () {
-    window.addEventListener('keyup', this.handleKeyUp, false);
+    window.addEventListener('keydown', this.handleKeyDown, false);
+    if (this.context.router) {
+      const history = this.context.router.history;
+      history.push(history.location.pathname, previewState);
+      this.unlistenHistory = history.listen(() => {
+        this.props.onClose();
+      });
+    }
   }
 
   componentWillUnmount () {
-    window.removeEventListener('keyup', this.handleKeyUp);
+    window.removeEventListener('keydown', this.handleKeyDown);
+    if (this.context.router) {
+      this.unlistenHistory();
+
+      if (this.context.router.history.location.state === previewState) {
+        this.context.router.history.goBack();
+      }
+    }
   }
 
   getIndex () {
@@ -84,8 +109,8 @@ export default class MediaModal extends ImmutablePureComponent {
     const index = this.getIndex();
     let pagination = [];
 
-    const leftNav  = media.size > 1 && <button tabIndex='0' className='media-modal__nav media-modal__nav--left' onClick={this.handlePrevClick} aria-label={intl.formatMessage(messages.previous)}><i className='fa fa-fw fa-chevron-left' /></button>;
-    const rightNav = media.size > 1 && <button tabIndex='0' className='media-modal__nav  media-modal__nav--right' onClick={this.handleNextClick} aria-label={intl.formatMessage(messages.next)}><i className='fa fa-fw fa-chevron-right' /></button>;
+    const leftNav  = media.size > 1 && <button tabIndex='0' className='media-modal__nav media-modal__nav--left' onClick={this.handlePrevClick} aria-label={intl.formatMessage(messages.previous)}><Icon id='chevron-left' fixedWidth /></button>;
+    const rightNav = media.size > 1 && <button tabIndex='0' className='media-modal__nav  media-modal__nav--right' onClick={this.handleNextClick} aria-label={intl.formatMessage(messages.next)}><Icon id='chevron-right' fixedWidth /></button>;
 
     if (media.size > 1) {
       pagination = media.map((item, i) => {
@@ -125,7 +150,7 @@ export default class MediaModal extends ImmutablePureComponent {
             startTime={time || 0}
             onCloseVideo={onClose}
             detailed
-            description={image.get('description')}
+            alt={image.get('description')}
             key={image.get('url')}
           />
         );

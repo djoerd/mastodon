@@ -5,19 +5,21 @@ import ImmutablePropTypes from 'react-immutable-proptypes';
 import PropTypes from 'prop-types';
 import ReplyIndicatorContainer from '../containers/reply_indicator_container';
 import AutosuggestTextarea from '../../../components/autosuggest_textarea';
+import PollButtonContainer from '../containers/poll_button_container';
 import UploadButtonContainer from '../containers/upload_button_container';
 import { defineMessages, injectIntl } from 'react-intl';
-import Collapsable from '../../../components/collapsable';
 import SpoilerButtonContainer from '../containers/spoiler_button_container';
 import PrivacyDropdownContainer from '../containers/privacy_dropdown_container';
 import SensitiveButtonContainer from '../containers/sensitive_button_container';
 import EmojiPickerDropdown from '../containers/emoji_picker_dropdown_container';
+import PollFormContainer from '../containers/poll_form_container';
 import UploadFormContainer from '../containers/upload_form_container';
 import WarningContainer from '../containers/warning_container';
 import { isMobile } from '../../../is_mobile';
 import ImmutablePureComponent from 'react-immutable-pure-component';
 import { length } from 'stringz';
 import { countableText } from '../util/counter';
+import Icon from 'mastodon/components/icon';
 
 const allowedAroundShortCode = '><\u0085\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000\u2028\u2029\u0009\u000a\u000b\u000c\u000d';
 
@@ -28,8 +30,12 @@ const messages = defineMessages({
   publishLoud: { id: 'compose_form.publish_loud', defaultMessage: '{publish}!' },
 });
 
-@injectIntl
-export default class ComposeForm extends ImmutablePureComponent {
+export default @injectIntl
+class ComposeForm extends ImmutablePureComponent {
+
+  static contextTypes = {
+    router: PropTypes.object,
+  };
 
   static propTypes = {
     intl: PropTypes.object.isRequired,
@@ -40,8 +46,10 @@ export default class ComposeForm extends ImmutablePureComponent {
     privacy: PropTypes.string,
     spoiler_text: PropTypes.string,
     focusDate: PropTypes.instanceOf(Date),
+    caretPosition: PropTypes.number,
     preselectDate: PropTypes.instanceOf(Date),
     is_submitting: PropTypes.bool,
+    is_changing_upload: PropTypes.bool,
     is_uploading: PropTypes.bool,
     onChange: PropTypes.func.isRequired,
     onSubmit: PropTypes.func.isRequired,
@@ -77,14 +85,14 @@ export default class ComposeForm extends ImmutablePureComponent {
     }
 
     // Submit disabled:
-    const { is_submitting, is_uploading, anyMedia } = this.props;
+    const { is_submitting, is_changing_upload, is_uploading, anyMedia } = this.props;
     const fulltext = [this.props.spoiler_text, countableText(this.props.text)].join('');
 
-    if (is_submitting || is_uploading || length(fulltext) > 500 || (fulltext.length !== 0 && fulltext.trim().length === 0 && !anyMedia)) {
+    if (is_submitting || is_uploading || is_changing_upload || length(fulltext) > 500 || (fulltext.length !== 0 && fulltext.trim().length === 0 && !anyMedia)) {
       return;
     }
 
-    this.props.onSubmit();
+    this.props.onSubmit(this.context.router ? this.context.router.history : null);
   }
 
   onSuggestionsClearRequested = () => {
@@ -96,7 +104,6 @@ export default class ComposeForm extends ImmutablePureComponent {
   }
 
   onSuggestionSelected = (tokenStart, token, value) => {
-    this._restoreCaret = null;
     this.props.onSuggestionSelected(tokenStart, token, value);
   }
 
@@ -116,9 +123,9 @@ export default class ComposeForm extends ImmutablePureComponent {
       if (this.props.preselectDate !== prevProps.preselectDate) {
         selectionEnd   = this.props.text.length;
         selectionStart = this.props.text.search(/\s/) + 1;
-      } else if (typeof this._restoreCaret === 'number') {
-        selectionStart = this._restoreCaret;
-        selectionEnd   = this._restoreCaret;
+      } else if (typeof this.props.caretPosition === 'number') {
+        selectionStart = this.props.caretPosition;
+        selectionEnd   = this.props.caretPosition;
       } else {
         selectionEnd   = this.props.text.length;
         selectionStart = selectionEnd;
@@ -128,6 +135,12 @@ export default class ComposeForm extends ImmutablePureComponent {
       this.autosuggestTextarea.textarea.focus();
     } else if(prevProps.is_submitting && !this.props.is_submitting) {
       this.autosuggestTextarea.textarea.focus();
+    } else if (this.props.spoiler !== prevProps.spoiler) {
+      if (this.props.spoiler) {
+        this.spoilerText.focus();
+      } else {
+        this.autosuggestTextarea.textarea.focus();
+      }
     }
   }
 
@@ -135,13 +148,15 @@ export default class ComposeForm extends ImmutablePureComponent {
     this.autosuggestTextarea = c;
   }
 
+  setSpoilerText = (c) => {
+    this.spoilerText = c;
+  }
+
   handleEmojiPick = (data) => {
     const { text }     = this.props;
     const position     = this.autosuggestTextarea.textarea.selectionStart;
-    const emojiChar    = data.native;
     const needsSpace   = data.custom && position > 0 && !allowedAroundShortCode.includes(text[position - 1]);
 
-    this._restoreCaret = position + emojiChar.length + 1 + (needsSpace ? 1 : 0);
     this.props.onPickEmoji(position, data, needsSpace);
   }
 
@@ -149,11 +164,11 @@ export default class ComposeForm extends ImmutablePureComponent {
     const { intl, onPaste, showSearch, anyMedia } = this.props;
     const disabled = this.props.is_submitting;
     const text     = [this.props.spoiler_text, countableText(this.props.text)].join('');
-    const disabledButton = disabled || this.props.is_uploading || length(text) > 500 || (text.length !== 0 && text.trim().length === 0 && !anyMedia);
+    const disabledButton = disabled || this.props.is_uploading || this.props.is_changing_upload || length(text) > 500 || (text.length !== 0 && text.trim().length === 0 && !anyMedia);
     let publishText = '';
 
     if (this.props.privacy === 'private' || this.props.privacy === 'direct') {
-      publishText = <span className='compose-form__publish-private'><i className='fa fa-lock' /> {intl.formatMessage(messages.publish)}</span>;
+      publishText = <span className='compose-form__publish-private'><Icon id='lock' /> {intl.formatMessage(messages.publish)}</span>;
     } else {
       publishText = this.props.privacy !== 'unlisted' ? intl.formatMessage(messages.publishLoud, { publish: intl.formatMessage(messages.publish) }) : intl.formatMessage(messages.publish);
     }
@@ -162,16 +177,14 @@ export default class ComposeForm extends ImmutablePureComponent {
       <div className='compose-form'>
         <WarningContainer />
 
-        <Collapsable isVisible={this.props.spoiler} fullHeight={50}>
-          <div className='spoiler-input'>
-            <label>
-              <span style={{ display: 'none' }}>{intl.formatMessage(messages.spoiler_placeholder)}</span>
-              <input placeholder={intl.formatMessage(messages.spoiler_placeholder)} value={this.props.spoiler_text} onChange={this.handleChangeSpoilerText} onKeyDown={this.handleKeyDown} type='text' className='spoiler-input__input'  id='cw-spoiler-input' />
-            </label>
-          </div>
-        </Collapsable>
-
         <ReplyIndicatorContainer />
+
+        <div className={`spoiler-input ${this.props.spoiler ? 'spoiler-input--visible' : ''}`}>
+          <label>
+            <span style={{ display: 'none' }}>{intl.formatMessage(messages.spoiler_placeholder)}</span>
+            <input placeholder={intl.formatMessage(messages.spoiler_placeholder)} value={this.props.spoiler_text} onChange={this.handleChangeSpoilerText} onKeyDown={this.handleKeyDown} tabIndex={this.props.spoiler ? 0 : -1} type='text' className='spoiler-input__input'  id='cw-spoiler-input' ref={this.setSpoilerText} />
+          </label>
+        </div>
 
         <div className='compose-form__autosuggest-wrapper'>
           <AutosuggestTextarea
@@ -194,11 +207,13 @@ export default class ComposeForm extends ImmutablePureComponent {
 
         <div className='compose-form__modifiers'>
           <UploadFormContainer />
+          <PollFormContainer />
         </div>
 
         <div className='compose-form__buttons-wrapper'>
           <div className='compose-form__buttons'>
             <UploadButtonContainer />
+            <PollButtonContainer />
             <PrivacyDropdownContainer />
             <SensitiveButtonContainer />
             <SpoilerButtonContainer />
