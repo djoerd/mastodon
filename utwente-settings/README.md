@@ -216,9 +216,9 @@ To update to a newer Mastodon version:
     rsync -av /data/mastodon/public/system /home/hiemstra/backups/mastodon/live/public/
     pg_dump mastodon_production >"/home/hiemstra/backups/mastodon/dump-$(date +\%a).sql"
 
-    #pull the site off-line and set a 503 maintenance page
-    sudo ln -s -f /etc/nginx/sites-available/maintenance.conf /etc/nginx/sites-enabled/mastodon.utwente.nl.conf
-    sudo /etc/init.d/nginx restart
+    # pull the site off-line and set a 503 maintenance page is not necessary
+    # sudo ln -s -f /etc/nginx/sites-available/maintenance.conf /etc/nginx/sites-enabled/mastodon.utwente.nl.conf
+    # sudo /etc/init.d/nginx restart
 
     # in the live repository: [update as follows](https://github.com/tootsuite/documentation/blob/master/Running-Mastodon/Updating-Mastodon-Guide.md)
     # check the [release notes](https://github.com/tootsuite/mastodon/releases/)
@@ -235,9 +235,14 @@ To update to a newer Mastodon version:
     RAILS_ENV=production bundle exec rails assets:precompile
 
     # Remove 503 page
-    sudo ln -s -f /etc/nginx/sites-available/mastodon.utwente.nl.conf /etc/nginx/sites-enabled/mastodon.utwente.nl.conf
-    sudo reboot
+    # sudo ln -s -f /etc/nginx/sites-available/mastodon.utwente.nl.conf /etc/nginx/sites-enabled/mastodon.utwente.nl.conf
+    # sudo reboot
  
+Clean up remote media and statuses
+
+    RAILS_ENV=production tootctl media remove
+    RAILS_ENV=production tootctl statuses remove
+
 Encore, How to run a Mastodon bot (using: https://anarcat.gitlab.io/feed2exec/)
 
     python3 -m feed2exec add news https://www.utwente.nl/en/news.rss --output feed2exec.plugins.exec --args "/home/hiemstra/bin/toot_news news@mastodon.utwente.nl '{item.title} {item.link}'"
@@ -249,4 +254,6 @@ where `toot_news` is:
     set -u
     /usr/local/bin/toot activate $1
     /usr/local/bin/toot post "$2"
+
+On keeping a fork in sync: https://help.github.com/en/articles/configuring-a-remote-for-a-fork
 
